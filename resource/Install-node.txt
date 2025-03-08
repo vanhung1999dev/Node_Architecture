@@ -1,0 +1,9 @@
+Install node
+cd ~
+curl -sL https://deb.nodesource.com/setup_20.x -o /tmp/nodesource_setup.sh
+sudo bash /tmp/nodesource_setup.sh
+
+//clone repo
+
+cd to a directory of your choice
+git clone https://github.com/hnasr/node-course-content
