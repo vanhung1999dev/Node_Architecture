@@ -17,3 +17,11 @@ Now that we understand the internals and architecture of Node, this is where we 
 ## LibUV
 
 - [Document](https://docs.libuv.org/en/v1.x/design.html)
+
+# Event-Loop
+
+![](./images/Screenshot_8.png)
+
+# Libvu Component
+
+![](./images/Screenshot_1.png)
