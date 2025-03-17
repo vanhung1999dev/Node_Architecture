@@ -330,3 +330,9 @@ function cached(getter) {
 const getImage = cached((url) => fetch(url).then((res) => res.blob()));
 
 ```
+
+---
+
+### Memory Management
+
+- [DOC](https://www.memorymanagement.org/)

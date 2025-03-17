@@ -18,6 +18,10 @@ Now that we understand the internals and architecture of Node, this is where we 
 
 - [Document](https://docs.libuv.org/en/v1.x/design.html)
 
+## V8
+
+- [Document](https://v8.dev/blog/fast-async)
+
 # Event-Loop
 
 ![](./images/Screenshot_8.png)
