@@ -18,6 +18,14 @@ Now that we understand the internals and architecture of Node, this is where we 
 
 - [Document](https://docs.libuv.org/en/v1.x/design.html)
 
+# Libvu Component
+
+![](./images/Screenshot_1.png)
+
+## Thread Pool
+
+[how it work internal](./thread_pool.md)
+
 ## V8
 
 - [Document](https://v8.dev/blog/fast-async)
@@ -25,7 +33,3 @@ Now that we understand the internals and architecture of Node, this is where we 
 # Event-Loop
 
 ![](./images/Screenshot_8.png)
-
-# Libvu Component
-
-![](./images/Screenshot_1.png)
