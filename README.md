@@ -26,6 +26,10 @@ Now that we understand the internals and architecture of Node, this is where we 
 
 [how it work internal](./thread_pool.md)
 
+## Socket event
+
+[socket event](./socket_event.md)
+
 ## V8
 
 - [Document](https://v8.dev/blog/fast-async)
