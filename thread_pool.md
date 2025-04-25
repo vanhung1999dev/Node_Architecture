@@ -76,7 +76,7 @@ for (let i = 0; i < 10; i++) {
 
 ```
 
-With default **UV_THREADPOOL_SIZE=4**,, run **4 thread in parallel** output might look like: <br>
+With default **UV_THREADPOOL_SIZE=4**,, run **4 thread in concurrent** with **single core** output might look like: <br>
 
 ```
 Hash 0 done in 600ms
