@@ -157,3 +157,142 @@ Why? Because we didn’t return the inner Promise, so the chain doesn’t wait! 
 })
 
 ```
+
+## 📦 1. Does Each Promise Have Its Own Queue?
+
+- Yes, internally each Promise object maintains its own reaction queue.
+
+```js
+const p = Promise.resolve(42);
+p.then((x) => console.log("A", x));
+p.then((x) => console.log("B", x));
+```
+
+- This creates two reactions on p. So p internally maintains a list like:
+
+```js
+[[PromiseFulfillReactions]]: [
+  reactionJobFor("A"),
+  reactionJobFor("B")
+]
+
+```
+
+## 🧾 How .then() Works Internally
+
+```js
+const p = new Promise((resolve) => resolve(1));
+p.then((val) => console.log("1", val));
+```
+
+Here's the internal logic of .then(): <br>
+
+```js
+function then(onFulfilled) {
+  const reactionRecord = {
+    type: "fulfill",
+    handler: onFulfilled,
+    capability: newPromiseCapability()
+  };
+
+  if (this.[[PromiseState]] === "pending") {
+    this.[[PromiseFulfillReactions]].push(reactionRecord);
+  } else if (this.[[PromiseState]] === "fulfilled") {
+    queueMicrotask(() => {
+      try {
+        const result = reactionRecord.handler(this.[[PromiseResult]]);
+        reactionRecord.capability.resolve(result);
+      } catch (e) {
+        reactionRecord.capability.reject(e);
+      }
+    });
+  }
+
+  return reactionRecord.capability.promise;
+}
+
+```
+
+- This means .then() doesn’t immediately execute. It creates a new promise reaction record and either queues it (pending) or runs it in a microtask (already resolved).
+
+## 🔁 How Promise Chaining Works
+
+```js
+Promise.resolve("a")
+  .then((x) => x + "b")
+  .then((x) => x + "c")
+  .then(console.log);
+```
+
+### Internal Flow:
+
+Each **.then()** call: <br>
+
+- Creates a new promise (let’s say p2, p3, …).
+- Registers a handler to the previous promise’s queue.
+- When the previous promise resolves:
+  - Its .then() handler runs in a microtask.
+  - The return value of the handler resolves the next promise.
+
+### Chaining
+
+```js
+Promise (value: "a")
+   └─── then (x => x + "b") → Promise (value: "ab")
+          └─── then (x => x + "c") → Promise (value: "abc")
+                 └─── then (console.log)
+
+```
+
+- Each .then() adds a reaction that feeds into the next promise in the chain.
+
+## How Microqueue is Used in the Chain
+
+```js
+Promise.resolve("a")
+  .then((x) => {
+    console.log("Step 1", x);
+    return x + "b";
+  })
+  .then((x) => {
+    console.log("Step 2", x);
+    return x + "c";
+  });
+```
+
+### Execution
+
+- 1.JS starts: resolves initial promise → queues then callback to microtask queue.
+- 2. Event loop:
+  - Finishes current script.
+  - Runs microtask queue in order:
+    - Step 1 runs → returns "ab"
+    - Step 2 gets scheduled with "ab" → runs → returns "abc"
+
+So, the entire chain is broken down into a sequence of microtasks. <br>
+
+## Behind the Curtain – Microtask Execution Lifecycle
+
+```js
+const p1 = Promise.resolve("foo");
+
+const p2 = p1.then((val) => {
+  console.log("A", val);
+  return val + "bar";
+});
+
+p2.then((val) => {
+  console.log("B", val);
+});
+```
+
+![](./images/2025-04-25_15-54.png)
+
+- Promises are JS objects with internal PromiseReaction queues.
+- A queue flush triggers a PromiseReactionJob.
+- These jobs are stored in V8’s Isolate-level microtask queue (one per thread).
+- When V8 finishes executing JS stack, it runs all queued microtasks before processing the next event.
+
+# ✅ Summary Table
+
+![](./images/2025-04-25_15-57.png)
