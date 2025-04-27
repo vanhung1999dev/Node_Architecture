@@ -143,3 +143,19 @@ These **run after the current operation finishes, before the event loop continue
 # Async/Await
 
 [how async/await work internally](./await.md)
+
+# Import/Require
+
+[how require work](./require.md)
+
+[how import work](./import.md)
+
+- **Require** load module in **sync** often in **Initial Phase, Poll Phase, Time Phase, .., support condition, can use in JS only**
+- **Import** load module in **async**, return **promise, load in Poll Phase, can use for both js and mjs**
+- **Import X from package** load **intermediately**, at the **top of declaration**, can not use in condition
+
+# Package.json
+
+[how package work](./package.md)
+
+# Performance
