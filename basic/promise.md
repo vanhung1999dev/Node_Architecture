@@ -23,13 +23,224 @@ const promise = new Promise((resolve, reject) => {
 
 - When a Promise is resolved or rejected, **it doesn’t immediately execute the then() or catch() methods**. Instead, it **schedules the execution of those handlers in the microtask queue (a queue for small tasks that should be executed after the currently executing script, but before rendering and other tasks)**.
 
-## Promise Internals:
+# Internal Promises in Node.js — State, Result, and Handlers
 
-A Promise object typically contains the following: <br>
+Understanding how internal Promises work in **Node.js**, especially when using something like `fs.promises.readFile()`, requires digging into V8 internals, libuv, and the event loop.
 
-- **State**: Stores the current state (pending, fulfilled, rejected).
-- **Result**: Stores the resolved value or the rejection reason.
-- **Handlers**: Arrays for .then() and .catch() callbacks that are queued to execute once the Promise settles.
+---
+
+## ✅ TL;DR Summary
+
+| Step | What happens |
+|------|--------------|
+| 1.  | `fs.promises.readFile()` uses Node.js internals to call libuv via native bindings. |
+| 2.  | When the async file read completes (in libuv), a C++ callback is invoked. |
+| 3.  | That callback eventually **resolves the Promise** (via V8 API), storing the result. |
+| 4.  | The `.then()` handler is scheduled in the **microtask queue** and runs in JS land. |
+| 5.  | All of this is backed by V8 internals (C++), using heap-allocated structures to store state, result, and handlers. |
+
+---
+
+## 🔍 Step-by-Step: `fs.promises.readFile()`
+
+```js
+import { readFile } from 'fs/promises';
+
+readFile('example.txt', 'utf8')
+  .then((data) => {
+    console.log('File data:', data);
+  })
+  .catch((err) => {
+    console.error('Error reading file:', err);
+  });
+```
+
+---
+
+## 🧱 1. Internal Structure of a Promise
+
+Internally (abstractly), a Promise consists of:
+
+### ✅ State  
+> `pending` → `fulfilled` or `rejected`
+
+### 📦 Result  
+> The value (data or error) when resolved or rejected.
+
+### 📋 Handlers  
+> Functions registered via `.then()`, `.catch()`, `.finally()`  
+> These are stored while the promise is **pending**, and executed once it **settles**.
+
+---
+
+## 🧪 Example Breakdown: `readFile`
+
+```js
+const promise = readFile('example.txt', 'utf8');
+```
+
+### At creation:
+
+| Property      | Value            |
+|---------------|------------------|
+| `state`       | `pending`        |
+| `result`      | `undefined`      |
+| `handlers`    | `[]` (empty array) |
+
+---
+
+### When `.then()` is called:
+
+```js
+promise.then((data) => {
+  console.log(data);
+});
+```
+
+| Property      | Value              |
+|---------------|--------------------|
+| `state`       | `pending`          |
+| `result`      | `undefined`        |
+| `handlers`    | `[onFulfilled]`    |
+
+---
+
+### When file is read successfully:
+
+| Property      | Value              |
+|---------------|--------------------|
+| `state`       | `fulfilled`        |
+| `result`      | `'file contents'`  |
+| `handlers`    | `[onFulfilled]`    |
+
+- The promise transitions from `pending → fulfilled`
+- Its result is stored
+- The handlers are moved to the microtask queue to be executed
+
+---
+
+### Microtask Queue Execution:
+
+```js
+onFulfilled('file contents'); // → console.log(data)
+```
+
+| Property      | Value              |
+|---------------|--------------------|
+| `state`       | `fulfilled`        |
+| `result`      | `'file contents'`  |
+| `handlers`    | `[]` (emptied)     |
+
+---
+
+## ❌ If the file doesn’t exist
+
+```js
+readFile('missing.txt', 'utf8')
+  .then(...)
+  .catch((err) => { console.error(err); });
+```
+
+| Property      | Value              |
+|---------------|--------------------|
+| `state`       | `rejected`         |
+| `result`      | `Error: ENOENT`    |
+| `handlers`    | `[onRejected]`     |
+
+---
+
+## 🔁 Internal State Transition Flow
+
+```mermaid
+stateDiagram-v2
+  [*] --> Pending
+  Pending --> Fulfilled : resolve(value)
+  Pending --> Rejected : reject(error)
+  Fulfilled --> Settled
+  Rejected --> Settled
+```
+
+---
+
+## 🧠 Where Is It All Stored?
+
+| Part              | Stored in…                 | Notes |
+|-------------------|----------------------------|-------|
+| `[[PromiseState]]`| V8 heap (C++)              | Initially `pending` |
+| `[[PromiseResult]]`| V8 heap                    | Value or error after resolution |
+| `[[PromiseFulfillReactions]]` | V8 reaction records | `.then()` callbacks |
+| JS handlers       | Heap references to JS closures | Stored in internal fields |
+
+---
+
+## 🔧 Native Execution Path (fs.promises.readFile)
+
+1. JS calls `readFile('file.txt')`
+2. Internally wraps `fs.readFile()` via Promise
+3. C++ layer uses `FSReqPromise` to track the promise
+4. Calls `uv_fs_read()` from libuv (C)
+5. I/O work done (kernel thread or worker pool)
+6. libuv calls back into Node native layer
+7. Native layer calls `resolve()`
+8. V8 sets:
+   - `[[PromiseState]] = fulfilled`
+   - `[[PromiseResult]] = data`
+9. V8 pushes `.then()` handler to microtask queue
+10. JS handler runs after current event loop turn
+
+---
+
+## 🧪 Bonus: Simulating a Promise Internally
+
+```js
+function myPromiseExecutor() {
+  let state = 'pending';
+  let result;
+  let handlers = [];
+
+  const resolve = (value) => {
+    if (state !== 'pending') return;
+    state = 'fulfilled';
+    result = value;
+    handlers.forEach(h => queueMicrotask(() => h.onFulfilled(result)));
+  };
+
+  const reject = (error) => {
+    if (state !== 'pending') return;
+    state = 'rejected';
+    result = error;
+    handlers.forEach(h => queueMicrotask(() => h.onRejected(result)));
+  };
+
+  const then = (onFulfilled, onRejected) => {
+    handlers.push({ onFulfilled, onRejected });
+  };
+
+  // Simulate async operation
+  setTimeout(() => resolve('hello!'), 10);
+
+  return { then };
+}
+
+const p = myPromiseExecutor();
+p.then(
+  (val) => console.log('Got:', val),
+  (err) => console.error('Error:', err)
+);
+```
+
+---
+
+## 📎 Visualization of Queue Priority
+
+| Queue/Callback Type     | When It Runs                  | Priority |
+|-------------------------|-------------------------------|----------|
+| `process.nextTick()`    | Before microtasks             | 🔥 Very High |
+| **Promise.then()**      | Microtask queue               | ✅ High |
+| `setTimeout()`          | Timer phase (next loop)       | ⏲️ Medium |
+| `setImmediate()`        | Check phase                   | ⏱️ Medium |
+| I/O callbacks           | Poll phase                    | ⚙️ Normal |
+| Sync code               | Immediately                   | 🧠 Top |
 
 ## Promise Resolution and Chaining:
 
