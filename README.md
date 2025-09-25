@@ -54,8 +54,13 @@ JavaScript → Node C++ binding → libuv I/O request
 ## Include nextTick and microTask: <br>
 
 ```arduino
- ┌────────────────────────────┐
- │  Phase 1: Timers           │ <── setTimeout, setInterval callbacks
+
+  ┌────────────────────────────┐
+ │  Phase 0: Init             │ <── Executes:
+ │                            │     - Top-level code (global scope)
+ │                            │     - Module imports/exports
+ │                            │     - Synchronous setup (e.g. app.init())
+ │                            │     - Registered timers, promises, etc.
  └────────────┬───────────────┘
               ▼
     🔥 process.nextTick queue (FIFO, includes nested)
@@ -63,44 +68,90 @@ JavaScript → Node C++ binding → libuv I/O request
     ⬇️ Continue to next phase
 
  ┌────────────────────────────┐
- │  Phase 2: Pending Callbacks│ <── I/O deferred callbacks
+ │  Phase 1: Timers           │ <── Executes:
+ │                            │     - setTimeout() callbacks
+ │                            │     - setInterval() callbacks
  └────────────┬───────────────┘
               ▼
-    🔥 process.nextTick queue (FIFO, includes nested)
-    ✅ microtask queue (Promise.then, includes nested)
+    🔥 process.nextTick queue
+    ✅ microtask queue
     ⬇️ Continue to next phase
 
  ┌────────────────────────────┐
- │  Phase 3: Poll             │ <── New I/O events, read/write
+ │  Phase 2: Pending Callbacks│ <── Executes:
+ │                            │     - Some system-level I/O callbacks
+ │                            │     - e.g., TCP errors from previous loop
  └────────────┬───────────────┘
               ▼
-    🔥 process.nextTick queue (FIFO, includes nested)
-    ✅ microtask queue (Promise.then, includes nested)
-    ⬇️ Continue to next phase
- ┌────────────────────────────┐
- │  Phase 4: Check            │ <── setImmediate()
- └────────────┬───────────────┘
-              ▼
-    🔥 process.nextTick queue (FIFO, includes nested)
-    ✅ microtask queue (Promise.then, includes nested)
+    🔥 process.nextTick queue
+    ✅ microtask queue
     ⬇️ Continue to next phase
 
  ┌────────────────────────────┐
- │  Phase 5: Close Callbacks  │ <── close events
+ │  Phase 3: Idle, Prepare    │ <── Internal phase (libuv)
+ │                            │     - Prepares for I/O polling
+ │                            │     - JS code can’t hook into this
  └────────────┬───────────────┘
               ▼
-    🔥 process.nextTick queue (FIFO, includes nested)
-    ✅ microtask queue (Promise.then, includes nested)
+    🔥 process.nextTick queue
+    ✅ microtask queue
     ⬇️ Continue to next phase
 
  ┌────────────────────────────┐
- │  Back to Phase 1 (loop)    │
+ │  Phase 4: Poll             │ <── Executes:
+ │                            │     - I/O event callbacks (fs, net, etc.)
+ │                            │     - Waits if no timers or immediates
+ └────────────┬───────────────┘
+              ▼
+    🔥 process.nextTick queue
+    ✅ microtask queue
+    ⬇️ Continue to next phase
+
+ ┌────────────────────────────┐
+ │  Phase 5: Check            │ <── Executes:
+ │                            │     - setImmediate() callbacks
+ └────────────┬───────────────┘
+              ▼
+    🔥 process.nextTick queue
+    ✅ microtask queue
+    ⬇️ Continue to next phase
+
+ ┌────────────────────────────┐
+ │  Phase 6: Close Callbacks  │ <── Executes:
+ │                            │     - close events (e.g. socket.on('close'))
+ │                            │     - handle .destroy(), etc.
+ └────────────┬───────────────┘
+              ▼
+    🔥 process.nextTick queue
+    ✅ microtask queue
+    ⬇️ Continue to next phase
+
+ ┌────────────────────────────┐
+ │  Back to Phase 1 (loop)    │ <── Loop repeats until exit
  └────────────────────────────┘
-
 
 ```
 
 - ✅ Both **process.nextTick()** and **Promise.then() queues are drained completely before moving to the next phase — including new items added during their own execution**.
+
+### Example
+
+```js
+console.log('A'); // Phase 0
+
+setTimeout(() => console.log('B'), 0);       // Phase 1
+setImmediate(() => console.log('C'));        // Phase 5
+process.nextTick(() => console.log('D'));    // Runs after Phase 0
+Promise.resolve().then(() => console.log('E')); // After nextTick
+
+// OUTPUT:
+A      ← Init (Phase 0)
+D      ← nextTick (after Phase 0)
+E      ← microtask (after nextTick)
+B      ← setTimeout (Timers - Phase 1)
+C      ← setImmediate (Check - Phase 5)
+
+```
 
 # 🧵 Task Queues Overview
 
