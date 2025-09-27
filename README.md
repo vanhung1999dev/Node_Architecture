@@ -134,7 +134,7 @@ JavaScript → Node C++ binding → libuv I/O request
 
 - ✅ Both **process.nextTick()** and **Promise.then() queues are drained completely before moving to the next phase — including new items added during their own execution**.
 
-### Example
+### Example 1
 
 ```js
 console.log('A'); // Phase 0
@@ -150,6 +150,125 @@ D      ← nextTick (after Phase 0)
 E      ← microtask (after nextTick)
 B      ← setTimeout (Timers - Phase 1)
 C      ← setImmediate (Check - Phase 5)
+
+```
+
+### Example 2
+
+```js
+console.log('A'); // ✅ Phase 0 — Synchronous
+
+setTimeout(() => console.log('B'), 0); // 🕒 Phase 1 — Timers
+
+setImmediate(() => console.log('C')); // 🕘 Phase 5 — Check
+
+process.nextTick(() => console.log('D')); // 🔁 Microtask — Runs *after* current Phase 0, before Promises
+
+Promise.resolve().then(() => console.log('E')); // 🔁 Microtask — Runs after nextTick
+
+async function demo() {
+  console.log("F"); // ✅ Phase 0 — Synchronous
+  await taskA();    // 🔁 Microtask (after current stack)
+  console.log("G"); // 🔁 Microtask — Scheduled after await completes
+}
+
+function taskA() {
+  return Promise.resolve(); // Returns a resolved Promise
+}
+
+demo(); // ✅ Phase 0 — Call the async function
+
+console.log("END"); // ✅ Phase 0 — Synchronous
+
+-------------------------------------
+
+
+A          // Phase 0
+F          // Phase 0
+END        // Phase 0
+D          // Microtask (nextTick)
+E          // Microtask (Promise.then)
+G          // Microtask (await continuation)
+B          // Phase 1 (setTimeout)
+C          // Phase 5 (setImmediate)
+
+```
+
+#### 
+
+```
+The code BEFORE await runs just like any other synchronous function.
+Only the part AFTER the first await is deferred.
+```
+
+
+### Example 3
+
+```js
+
+console.log('A'); 
+// 🔹 Runs immediately (synchronous code — Phase 0)
+// ✅ Output: A
+
+setTimeout(() => console.log('B'), 0); 
+// 🕒 Scheduled for later — runs in "timers" phase (Phase 1)
+// ✅ Output: B (after microtasks are done)
+
+setImmediate(() => console.log('C')); 
+// 🕘 Scheduled for later — runs in "check" phase (Phase 5)
+// ✅ Output: C (after setTimeout, usually)
+
+process.nextTick(() => console.log('D')); 
+// 🔁 Microtask — runs *after* current synchronous code finishes
+// ✅ Output: D (before any Promises)
+
+Promise.resolve().then(() => console.log('E')); 
+// 🔁 Microtask — runs after nextTick
+// ✅ Output: E
+
+async function demo() {
+  console.log("F");
+  // 🔹 Runs immediately when `demo()` is awaited
+  // ✅ Output: F (but not until the async block starts)
+
+  await taskA();
+  // ⏸ Pauses here — resumes in microtask queue
+  // The code below is deferred
+
+  console.log("G");
+  // 🔁 Microtask — runs after await finishes
+  // ✅ Output: G
+}
+
+function taskA() {
+  return Promise.resolve(); 
+  // ✅ Resolves immediately, so resume will happen soon
+}
+
+// 👇 This is an async IIFE (Immediately Invoked Function Expression)
+(async () => {
+  await demo();
+  // 🔁 Microtask — runs after synchronous code finishes
+  // The `demo()` function runs:
+  // - F prints immediately
+  // - Then G runs in a microtask after await
+})();
+
+console.log("END");
+// 🔹 Runs synchronously right after top-level code
+// ✅ Output: END
+
+ ---------------------------
+
+A      // sync
+END    // sync
+D      // process.nextTick (microtask)
+E      // Promise.then (microtask)
+F      // from demo(), called inside async IIFE
+G      // after await inside demo()
+B      // setTimeout (Phase 1)
+C      // setImmediate (Phase 5)
+
 
 ```
 
