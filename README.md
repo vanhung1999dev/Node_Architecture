@@ -47,7 +47,7 @@ JavaScript → Node C++ binding → libuv I/O request
 
 - [Document](https://v8.dev/blog/fast-async)
 
-# Event-Loop
+# Event-Loop , Main Thread, V8 
 
 ![](./images/Screenshot_8.png)
 
@@ -271,6 +271,65 @@ C      // setImmediate (Phase 5)
 
 
 ```
+
+## How main thread work
+- One main thread running your JavaScript code (via V8 engine).
+- A C++ layer (libuv) underneath that handles I/O, timers, and system calls asynchronously — using worker threads, thread pool, or OS-level async APIs.
+- The main thread constantly switches between **two key roles** — but never does both at once
+
+### ⚙️ Role 1: Execute JavaScript (V8 engine)
+When Node.js runs your code, it does so through V8, Google’s JS engine (same one used in Chrome). <br>
+This phase is where Node executes: <br>
+- Your JS functions, variables, loops, etc. 
+- Event callbacks (from timers, promises, I/O results) 
+- Async/await resolutions
+- nextTick, microtasks
+
+What actually happens <br>
+```js
+console.log("1");
+setTimeout(() => console.log("2"), 0);
+Promise.resolve().then(() => console.log("3"));
+console.log("4");
+```
+
+Step 1 — JS Execution (V8) <br>
+- 1️⃣ console.log("1") → prints
+- 2️⃣ setTimeout(...) → libuv timer queue
+- 3️⃣ Promise.resolve() → microtask queue
+- 4️⃣ console.log("4") → prints
+
+Step 2 — After stack empty <br>
+- Microtasks run first → console.log("3")
+- Event loop continues → timer queue → console.log("2")
+
+Final Output: <br>
+```
+1
+4
+3
+2
+```
+
+Only when the JS stack is empty can control go back to the event loop (libuv).
+
+### 🔄 Role 2: Drive the Event Loop (libuv)
+
+When V8 is idle (no JS running), Node hands control to libuv’s event loop. <br>
+The event loop is like a traffic controller: <br>
+- It checks which async tasks are done (I/O, timers, etc.).
+- It decides which callbacks should run next.
+- Then it gives those callbacks back to V8 for execution.
+
+#### 🔁 The 6 Phases of the Event Loop
+| Phase                    | Description                                                         |
+| ------------------------ | ------------------------------------------------------------------- |
+| **1. timers**            | Executes `setTimeout` / `setInterval` callbacks whose time expired. |
+| **2. pending callbacks** | Runs I/O callbacks deferred from the previous loop.                 |
+| **3. idle, prepare**     | Internal phase (Node.js internals).                                 |
+| **4. poll**              | Waits for new I/O events (e.g., file, socket, DNS).                 |
+| **5. check**             | Executes `setImmediate()` callbacks.                                |
+| **6. close callbacks**   | Runs `close` event handlers (like socket close).                    |
 
 # 🧵 Task Queues Overview
 
