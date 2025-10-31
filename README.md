@@ -409,5 +409,23 @@ These **run after the current operation finishes, before the event loop continue
 
 [worker thread](./advance/worker_thread.md)
 
+
+## Compare
+| Feature                    | **Child Process**                                                      | **Worker Threads**                                     | **Cluster**                                      |
+| -------------------------- | ---------------------------------------------------------------------- | ------------------------------------------------------ | ------------------------------------------------ |
+| **Type**                   | OS-level **process**                                                   | JS-level **thread** inside same process                | Multiple **child processes** managed by master   |
+| **Isolation**              | ✅ Full — separate memory, V8, event loop                               | ⚠️ Partial — shared memory, same process               | ✅ Full — same as child process                   |
+| **Created via**            | `child_process.fork()` / `spawn()` / `exec()`                          | `new Worker()` (from `worker_threads`)                 | `cluster.fork()`                                 |
+| **OS Resource**            | New PID, new process, new address space                                | Same PID, separate thread in same process              | New PID (per worker)                             |
+| **Communication (IPC)**    | OS pipes (`stdin`, `stdout`, `stderr`) or message channels via handles | Shared memory (`SharedArrayBuffer`) or message passing | Same as child process (via internal IPC channel) |
+| **Crash Isolation**        | ✅ Crash doesn’t affect parent                                          | ❌ Crash can crash whole process                        | ✅ One worker crash doesn’t kill others           |
+| **CPU-bound use**          | ✅ Excellent                                                            | ✅ Excellent                                            | ✅ Excellent (via multiple processes)             |
+| **I/O-bound use**          | ⚠️ Not ideal (duplication)                                             | ⚠️ Not needed (event loop can handle I/O)              | ✅ Excellent for scaling HTTP servers             |
+| **Performance (overhead)** | 🐢 High (process creation + IPC via kernel)                            | 🚀 Low (thread creation + shared memory)               | 🐢 Moderate (each is a full process)             |
+| **Memory usage**           | 🔺 High (duplicated heap)                                              | 🟢 Low (shared heap, isolate per thread)               | 🔺 High (per-process heap + V8)                  |
+| **Example use case**       | Running external command, compute in parallel                          | CPU-heavy computation (crypto, ML, etc.)               | Scaling HTTP servers                             |
+| **Spawn time**             | Slow (ms to 100ms)                                                     | Fast (<1ms)                                            | Slow (like fork)                                 |
+
+
 # Advance question relate to Nodejs 
 [question](./question-to-ask.md)
