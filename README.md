@@ -426,6 +426,8 @@ These **run after the current operation finishes, before the event loop continue
 | **Example use case**       | Running external command, compute in parallel                          | CPU-heavy computation (crypto, ML, etc.)               | Scaling HTTP servers                             |
 | **Spawn time**             | Slow (ms to 100ms)                                                     | Fast (<1ms)                                            | Slow (like fork)                                 |
 
+# How to debugging
+[Infor](./debug.md)
 
 # Advance question relate to Nodejs 
 [question](./question-to-ask.md)
